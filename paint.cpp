@@ -49,6 +49,7 @@ private:
     ToolType& m_toolRef;
 
     void OnPaint(wxPaintEvent& event);
+    void OnSize(wxSizeEvent& event);
     void OnLeftDown(wxMouseEvent& event);
     void OnMouseLeftUp(wxMouseEvent& event);
     void OnMotion(wxMouseEvent& event);
@@ -95,6 +96,7 @@ wxEND_EVENT_TABLE()
 class MyApp : public wxApp {
 public:
     virtual bool OnInit() override {
+        wxInitAllImageHandlers();
         MainFrame* frame = new MainFrame("C++ Paint App - wxWidgets");
         frame->Show(true);
         return true;
@@ -130,6 +132,11 @@ MainFrame::MainFrame(const wxString& title)
 
     // Paint panel
     m_paintPanel = new PaintPanel(this, m_currentColor, m_currentTool);
+
+    wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
+    sizer->Add(m_paintPanel, 1, wxEXPAND);
+    SetSizer(sizer);
+    Layout();
 }
 
 // -----------------------------
@@ -176,11 +183,28 @@ void MainFrame::OnToolSelected(wxCommandEvent& event) {
 PaintPanel::PaintPanel(wxWindow* parent, wxColour& colorRef, ToolType& toolRef)
     : wxPanel(parent), m_colorRef(colorRef), m_toolRef(toolRef)
 {
+    Bind(wxEVT_SIZE, &PaintPanel::OnSize, this);
     SetBackgroundStyle(wxBG_STYLE_PAINT);
     m_bitmap.Create(800, 600);
     wxMemoryDC dc(m_bitmap);
     dc.SetBackground(*wxWHITE_BRUSH);
     dc.Clear();
+}
+
+void PaintPanel::OnSize(wxSizeEvent& event) {
+    wxSize newSize = event.GetSize();
+    if (newSize.GetWidth() > 0 && newSize.GetHeight() > 0) {
+        wxBitmap newBitmap(newSize);
+        wxMemoryDC dc;
+        dc.SelectObject(newBitmap);
+        dc.SetBackground(*wxWHITE_BRUSH);
+        dc.Clear();
+        dc.DrawBitmap(m_bitmap, 0, 0, false);
+        m_bitmap = newBitmap;
+    }
+
+    Refresh();
+    event.Skip();
 }
 
 void PaintPanel::OnPaint(wxPaintEvent& event) {
@@ -211,10 +235,15 @@ void PaintPanel::OnMotion(wxMouseEvent& event) {
 void PaintPanel::DrawLine(wxPoint from, wxPoint to) {
     wxMemoryDC dc(m_bitmap);
     wxPen pen;
+    int m_eraserSize = 10; 
 
-    if (m_toolRef == TOOL_ERASER)
-        pen.SetColour(*wxWHITE);
-    else
+    if (m_toolRef == TOOL_ERASER) {
+        dc.SetPen(wxPen(*wxWHITE, m_eraserSize));
+        dc.SetBrush(*wxWHITE_BRUSH);
+        dc.DrawLine(from, to);
+        Refresh();
+        return;
+    } else
         pen.SetColour(m_colorRef);
 
     pen.SetWidth((m_toolRef == TOOL_BRUSH) ? 6 : 1);
@@ -230,8 +259,10 @@ void PaintPanel::SaveToFile(const wxString& path) {
 
 void PaintPanel::LoadFromFile(const wxString& path) {
     wxImage img;
-    if (img.LoadFile(path)) {
+    if (img.LoadFile(path, wxBITMAP_TYPE_PNG)) {
         m_bitmap = wxBitmap(img);
         Refresh();
+    } else {
+        wxLogError("Failed to load image. Format might not be supported.");
     }
 }
